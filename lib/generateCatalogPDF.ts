@@ -5,12 +5,15 @@ import { products, formatCategoryName, getCategories } from '@/data/products';
 const COLORS = {
   white: [255, 255, 255] as [number, number, number],
   accent: [160, 32, 240] as [number, number, number],
+  accentDark: [80, 16, 120] as [number, number, number],
   secondary: [0, 191, 255] as [number, number, number],
   green: [34, 197, 94] as [number, number, number],
   red: [239, 68, 68] as [number, number, number],
+  redDark: [80, 20, 20] as [number, number, number],
   zinc400: [161, 161, 170] as [number, number, number],
   zinc600: [82, 82, 91] as [number, number, number],
   cardBg: [18, 18, 24] as [number, number, number],
+  darkBg: [8, 8, 12] as [number, number, number],
 };
 
 // Cores dos sabores
@@ -32,6 +35,11 @@ const getFlavorColor = (flavor: string): [number, number, number] => {
   if (f.includes('tutti') || f.includes('splash')) return [217, 70, 239];
   if (f.includes('ice')) return [14, 165, 233];
   return [160, 32, 240];
+};
+
+// Versão escura da cor (para backgrounds)
+const getDarkColor = (color: [number, number, number]): [number, number, number] => {
+  return [Math.floor(color[0] * 0.2), Math.floor(color[1] * 0.2), Math.floor(color[2] * 0.2)];
 };
 
 // Carregar imagem como base64
@@ -62,42 +70,19 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
   const margin = 8;
   const contentWidth = pageWidth - margin * 2;
 
-  // Carregar background
-  let bgImage: string | null = null;
-  try {
-    bgImage = await loadImageAsBase64('/bg.svg');
-  } catch {
-    bgImage = null;
-  }
-
   // Função para desenhar background
   const drawBackground = () => {
     // Fundo escuro base
-    pdf.setFillColor(0, 0, 0);
+    pdf.setFillColor(...COLORS.darkBg);
     pdf.rect(0, 0, pageWidth, pageHeight, 'F');
 
-    // Tentar adicionar bg.svg
-    if (bgImage) {
-      try {
-        pdf.addImage(bgImage, 'PNG', 0, 0, pageWidth, pageHeight);
-        // Overlay escuro para legibilidade
-        pdf.setFillColor(0, 0, 0);
-        pdf.setGState(pdf.GState({ opacity: 0.6 }));
-        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-        pdf.setGState(pdf.GState({ opacity: 1 }));
-      } catch {
-        // Fallback com gradiente decorativo
-        for (let i = 0; i < 50; i++) {
-          const alpha = 0.08 - i * 0.0015;
-          if (alpha > 0) {
-            pdf.setFillColor(160, 32, 240);
-            pdf.setGState(pdf.GState({ opacity: alpha }));
-            pdf.circle(pageWidth * 0.2, -10 + i * 3, 100 - i, 'F');
-          }
-        }
-        pdf.setGState(pdf.GState({ opacity: 1 }));
-      }
-    }
+    // Decoração no topo (círculo accent escuro)
+    pdf.setFillColor(...COLORS.accentDark);
+    pdf.circle(pageWidth * 0.3, -30, 80, 'F');
+
+    // Decoração no canto inferior
+    pdf.setFillColor(0, 50, 80);
+    pdf.circle(pageWidth + 20, pageHeight + 20, 60, 'F');
   };
 
   // Pré-carregar todas as imagens
@@ -140,11 +125,9 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
       isFirstPage = false;
     }
 
-    // Header da categoria
-    pdf.setFillColor(...COLORS.accent);
-    pdf.setGState(pdf.GState({ opacity: 0.15 }));
+    // Header da categoria - fundo escuro accent
+    pdf.setFillColor(...COLORS.accentDark);
     pdf.roundedRect(margin, currentY, contentWidth, headerHeight - 2, 3, 3, 'F');
-    pdf.setGState(pdf.GState({ opacity: 1 }));
 
     // Linha accent à esquerda do header
     pdf.setFillColor(...COLORS.accent);
@@ -179,16 +162,12 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
 
       // Background do card
       pdf.setFillColor(...COLORS.cardBg);
-      pdf.setGState(pdf.GState({ opacity: 0.9 }));
       pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'F');
-      pdf.setGState(pdf.GState({ opacity: 1 }));
 
-      // Borda com gradiente accent
-      pdf.setDrawColor(...COLORS.accent);
-      pdf.setGState(pdf.GState({ opacity: 0.3 }));
+      // Borda accent
+      pdf.setDrawColor(...COLORS.accentDark);
       pdf.setLineWidth(0.5);
       pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'S');
-      pdf.setGState(pdf.GState({ opacity: 1 }));
 
       // === IMAGEM ===
       const imgX = cardX + 4;
@@ -203,10 +182,10 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
         try {
           pdf.addImage(imageData, 'JPEG', imgX + 2, imgY + 2, imgSize - 4, imgSize - 4);
         } catch {
-          // Placeholder icon
+          // Placeholder
           pdf.setTextColor(...COLORS.zinc600);
           pdf.setFontSize(20);
-          pdf.text('📷', imgX + imgSize/2 - 5, imgY + imgSize/2 + 5);
+          pdf.text('?', imgX + imgSize/2 - 3, imgY + imgSize/2 + 5);
         }
       }
 
@@ -217,14 +196,14 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
         pdf.setTextColor(...COLORS.white);
         pdf.setFontSize(6);
         pdf.setFont('helvetica', 'bold');
-        pdf.text('★ DESTAQUE', imgX + 2, imgY + 5);
+        pdf.text('DESTAQUE', imgX + 2, imgY + 5);
       }
 
       // === INFO DO PRODUTO ===
       const infoX = imgX + imgSize + 6;
       const infoWidth = cardWidth - imgSize - 14;
 
-      // Nome do produto (tamanho maior)
+      // Nome do produto
       pdf.setTextColor(...COLORS.white);
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(11);
@@ -233,7 +212,7 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
       const nameLines = pdf.splitTextToSize(product.name, infoWidth);
       pdf.text(nameLines.slice(0, 2), infoX, cardY + 12);
 
-      // Preço (grande e destacado)
+      // Preço
       pdf.setTextColor(...COLORS.accent);
       pdf.setFontSize(16);
       pdf.setFont('helvetica', 'bold');
@@ -247,9 +226,9 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
       pdf.setTextColor(...statusColor);
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(product.is_available ? 'Disponível' : 'Esgotado', infoX + 8, statusY + 3);
+      pdf.text(product.is_available ? 'Disponivel' : 'Esgotado', infoX + 8, statusY + 3);
 
-      // === SABORES (na parte inferior do card) ===
+      // === SABORES ===
       if (product.flavors.length > 0) {
         const flavorY = cardY + cardHeight - 10;
         let fx = cardX + 4;
@@ -258,13 +237,11 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
 
         for (let j = 0; j < product.flavors.length; j++) {
           const flavor = product.flavors[j];
-          const [r, g, b] = getFlavorColor(flavor);
-
-          // Nome completo do sabor
-          const flavorText = flavor;
+          const flavorColor = getFlavorColor(flavor);
+          const darkFlavorColor = getDarkColor(flavorColor);
 
           pdf.setFontSize(7);
-          const textW = pdf.getTextWidth(flavorText) + 5;
+          const textW = pdf.getTextWidth(flavor) + 5;
 
           // Se não couber mais, mostrar contador
           if (fx + textW > cardX + maxFlavorWidth) {
@@ -277,14 +254,12 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
             break;
           }
 
-          // Badge do sabor
-          pdf.setFillColor(r, g, b);
-          pdf.setGState(pdf.GState({ opacity: 0.2 }));
+          // Badge do sabor com cor escura
+          pdf.setFillColor(...darkFlavorColor);
           pdf.roundedRect(fx, flavorY, textW, 7, 2, 2, 'F');
-          pdf.setGState(pdf.GState({ opacity: 1 }));
 
-          pdf.setTextColor(r, g, b);
-          pdf.text(flavorText, fx + 2.5, flavorY + 5);
+          pdf.setTextColor(...flavorColor);
+          pdf.text(flavor, fx + 2.5, flavorY + 5);
 
           fx += textW + 3;
           flavorsShown++;
@@ -320,23 +295,21 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
   pdf.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
 
   // Aviso +18 (esquerda)
-  pdf.setFillColor(239, 68, 68);
-  pdf.setGState(pdf.GState({ opacity: 0.2 }));
+  pdf.setFillColor(...COLORS.redDark);
   pdf.roundedRect(margin, footerY, 75, 10, 3, 3, 'F');
-  pdf.setGState(pdf.GState({ opacity: 1 }));
 
-  pdf.setTextColor(239, 68, 68);
+  pdf.setTextColor(...COLORS.red);
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('🔞 PROIBIDO MENORES DE 18', margin + 3, footerY + 7);
+  pdf.text('PROIBIDO MENORES DE 18', margin + 3, footerY + 7);
 
   // WhatsApp (direita)
-  pdf.setFillColor(22, 163, 74);
+  pdf.setFillColor(22, 80, 50);
   pdf.roundedRect(pageWidth - margin - 60, footerY, 60, 10, 3, 3, 'F');
   pdf.setTextColor(...COLORS.white);
   pdf.setFontSize(9);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('📱 (61) 98213-1123', pageWidth - margin - 57, footerY + 7);
+  pdf.text('(61) 98213-1123', pageWidth - margin - 57, footerY + 7);
 
   // Data (centro)
   pdf.setTextColor(...COLORS.zinc400);
