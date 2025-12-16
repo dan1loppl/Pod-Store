@@ -230,7 +230,7 @@ export const products: Product[] = [
 
 // Helper to get unique categories
 export const getCategories = (): string[] => {
-  const categoryIds = [...new Set(products.map(p => p.category_id))];
+  const categoryIds = Array.from(new Set(products.map(p => p.category_id)));
   return categoryIds;
 };
 
