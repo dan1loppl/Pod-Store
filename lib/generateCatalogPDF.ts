@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { products, formatCategoryName, getCategories } from '@/data/products';
+import { getFlavorColorRGB } from '@/lib/flavorColors';
 
 // Cores do tema
 const COLORS = {
@@ -16,30 +17,28 @@ const COLORS = {
   darkBg: [8, 8, 12] as [number, number, number],
 };
 
-// Cores dos sabores
-const getFlavorColor = (flavor: string): [number, number, number] => {
-  const f = flavor.toLowerCase();
-  if (f.includes('strawberry') || f.includes('morango')) return [239, 68, 68];
-  if (f.includes('banana')) return [234, 179, 8];
-  if (f.includes('watermelon') || f.includes('melancia')) return [34, 197, 94];
-  if (f.includes('grape') || f.includes('uva')) return [168, 85, 247];
-  if (f.includes('mint') || f.includes('menthol') || f.includes('menta')) return [6, 182, 212];
-  if (f.includes('apple') || f.includes('maçã')) return [74, 222, 128];
-  if (f.includes('mango') || f.includes('manga')) return [249, 115, 22];
-  if (f.includes('peach') || f.includes('pêssego')) return [251, 146, 60];
-  if (f.includes('blueberry') || f.includes('blue')) return [59, 130, 246];
-  if (f.includes('lime') || f.includes('lemon')) return [132, 204, 22];
-  if (f.includes('kiwi')) return [16, 185, 129];
-  if (f.includes('coconut') || f.includes('coco')) return [217, 119, 6];
-  if (f.includes('raspberry')) return [236, 72, 153];
-  if (f.includes('tutti') || f.includes('splash')) return [217, 70, 239];
-  if (f.includes('ice')) return [14, 165, 233];
-  return [160, 32, 240];
-};
+// Sabores (sempre mostrar todos, com wrap)
+const FLAVOR_TEXT_SIZE = 7;
+const FLAVOR_BADGE_HEIGHT = 7;
+const FLAVOR_BADGE_GAP_X = 3;
+const FLAVOR_BADGE_GAP_Y = 2;
 
 // Versão escura da cor (para backgrounds)
 const getDarkColor = (color: [number, number, number]): [number, number, number] => {
   return [Math.floor(color[0] * 0.2), Math.floor(color[1] * 0.2), Math.floor(color[2] * 0.2)];
+};
+
+const getLocalISODate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getImageFormatFromDataUrl = (dataUrl: string): 'JPEG' | 'PNG' | 'WEBP' => {
+  if (dataUrl.startsWith('data:image/png')) return 'PNG';
+  if (dataUrl.startsWith('data:image/webp')) return 'WEBP';
+  return 'JPEG';
 };
 
 // Carregar imagem como base64
@@ -80,9 +79,13 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
     pdf.setFillColor(...COLORS.accentDark);
     pdf.circle(pageWidth * 0.3, -30, 80, 'F');
 
-    // Decoração no canto inferior
-    pdf.setFillColor(0, 50, 80);
+    // Decoração no canto inferior (mais integrado ao tema)
+    pdf.setFillColor(...getDarkColor(COLORS.secondary));
     pdf.circle(pageWidth + 20, pageHeight + 20, 60, 'F');
+  };
+
+  const formatBRL = (value: number): string => {
+    return value.toFixed(2).replace('.', ',');
   };
 
   // Pré-carregar todas as imagens
@@ -106,16 +109,41 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
   // Layout em grid 2x2 com cards grandes
   const cardGap = 6;
   const cardWidth = (contentWidth - cardGap) / 2;
-  const cardHeight = 58;
+  const baseCardHeight = 58;
   const imgSize = 42;
   const headerHeight = 14;
+
+  const splitFlavorsIntoRows = (pdfDoc: jsPDF, flavors: string[], maxWidth: number) => {
+    const rows: Array<Array<{ flavor: string; w: number }>> = [];
+    let currentRow: Array<{ flavor: string; w: number }> = [];
+    let currentW = 0;
+
+    pdfDoc.setFontSize(FLAVOR_TEXT_SIZE);
+
+    for (const flavor of flavors) {
+      const w = pdfDoc.getTextWidth(flavor) + 5;
+      const extraGap = currentRow.length > 0 ? FLAVOR_BADGE_GAP_X : 0;
+
+      if (currentRow.length > 0 && currentW + extraGap + w > maxWidth) {
+        rows.push(currentRow);
+        currentRow = [];
+        currentW = 0;
+      }
+
+      currentRow.push({ flavor, w });
+      currentW += (currentRow.length > 1 ? FLAVOR_BADGE_GAP_X : 0) + w;
+    }
+
+    if (currentRow.length > 0) rows.push(currentRow);
+    return rows;
+  };
 
   for (const categoryId of categories) {
     const categoryProducts = products.filter(p => p.category_id === categoryId);
     if (categoryProducts.length === 0) continue;
 
     // Verificar espaço para header + pelo menos 1 linha de produtos
-    const spaceNeeded = headerHeight + cardHeight + 5;
+    const spaceNeeded = headerHeight + baseCardHeight + 5;
     if (!isFirstPage && currentY + spaceNeeded > pageHeight - margin) {
       pdf.addPage();
       drawBackground();
@@ -133,10 +161,24 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
     pdf.setFillColor(...COLORS.accent);
     pdf.roundedRect(margin, currentY, 3, headerHeight - 2, 1, 1, 'F');
 
-    pdf.setTextColor(...COLORS.accent);
+    // Título mais legível e com "highlight" discreto
+    const titleX = margin + 8;
+    const titleY = currentY + 9;
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(14);
-    pdf.text(formatCategoryName(categoryId).toUpperCase(), margin + 8, currentY + 9);
+
+    // sombra/realce sutil em secondary
+    pdf.setTextColor(...COLORS.secondary);
+    pdf.text(formatCategoryName(categoryId).toUpperCase(), titleX + 0.4, titleY + 0.2);
+
+    // texto principal em branco
+    pdf.setTextColor(...COLORS.white);
+    pdf.text(formatCategoryName(categoryId).toUpperCase(), titleX, titleY);
+
+    // linha de detalhe no fundo do header
+    pdf.setDrawColor(...COLORS.secondary);
+    pdf.setLineWidth(0.6);
+    pdf.line(margin + 6, currentY + (headerHeight - 2) - 1.2, pageWidth - margin - 6, currentY + (headerHeight - 2) - 1.2);
 
     pdf.setTextColor(...COLORS.zinc400);
     pdf.setFontSize(10);
@@ -144,142 +186,146 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
 
     currentY += headerHeight + 2;
 
-    // Grid de produtos 2 por linha
-    let col = 0;
-    for (let i = 0; i < categoryProducts.length; i++) {
-      const product = categoryProducts[i];
+    // Render em linhas (2 colunas) com altura dinâmica para caber TODOS os sabores
+    for (let rowStart = 0; rowStart < categoryProducts.length; rowStart += 2) {
+      const left = categoryProducts[rowStart];
+      const right = categoryProducts[rowStart + 1];
 
-      // Verificar se precisa de nova página
-      if (currentY + cardHeight > pageHeight - 15) {
+      const maxFlavorWidth = cardWidth - 8;
+      const leftFlavorRows = left.flavors.length > 0 ? splitFlavorsIntoRows(pdf, left.flavors, maxFlavorWidth) : [];
+      const rightFlavorRows = right?.flavors.length > 0 ? splitFlavorsIntoRows(pdf, right.flavors, maxFlavorWidth) : [];
+
+      const leftRowsCount = left.flavors.length > 0 ? leftFlavorRows.length : 0;
+      const rightRowsCount = right?.flavors.length ? rightFlavorRows.length : 0;
+      const maxRows = Math.max(1, leftRowsCount, rightRowsCount);
+      const dynamicCardHeight = baseCardHeight + (maxRows - 1) * (FLAVOR_BADGE_HEIGHT + FLAVOR_BADGE_GAP_Y);
+
+      if (currentY + dynamicCardHeight > pageHeight - 15) {
         pdf.addPage();
         drawBackground();
         currentY = margin;
-        col = 0;
       }
 
-      const cardX = margin + col * (cardWidth + cardGap);
       const cardY = currentY;
 
-      // Background do card
-      pdf.setFillColor(...COLORS.cardBg);
-      pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'F');
+      const renderCard = (
+        product: typeof left,
+        cardX: number,
+        cardHeight: number,
+        precomputedFlavorRows: Array<Array<{ flavor: string; w: number }>>
+      ) => {
+        // Background do card
+        pdf.setFillColor(...COLORS.cardBg);
+        pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'F');
 
-      // Borda accent
-      pdf.setDrawColor(...COLORS.accentDark);
-      pdf.setLineWidth(0.5);
-      pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'S');
+        // Borda accent
+        pdf.setDrawColor(...COLORS.accentDark);
+        pdf.setLineWidth(0.5);
+        pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, 'S');
 
-      // === IMAGEM ===
-      const imgX = cardX + 4;
-      const imgY = cardY + 4;
+        // === IMAGEM ===
+        const imgX = cardX + 4;
+        const imgY = cardY + 4;
 
-      // Fundo da imagem
-      pdf.setFillColor(25, 25, 32);
-      pdf.roundedRect(imgX, imgY, imgSize, imgSize, 3, 3, 'F');
+        pdf.setFillColor(25, 25, 32);
+        pdf.roundedRect(imgX, imgY, imgSize, imgSize, 3, 3, 'F');
 
-      const imageData = imageCache[product.id];
-      if (imageData) {
-        try {
-          pdf.addImage(imageData, 'JPEG', imgX + 2, imgY + 2, imgSize - 4, imgSize - 4);
-        } catch {
-          // Placeholder
-          pdf.setTextColor(...COLORS.zinc600);
-          pdf.setFontSize(20);
-          pdf.text('?', imgX + imgSize/2 - 3, imgY + imgSize/2 + 5);
-        }
-      }
-
-      // Badge destaque no canto da imagem
-      if (product.is_featured) {
-        pdf.setFillColor(...COLORS.accent);
-        pdf.roundedRect(imgX, imgY, 22, 7, 2, 2, 'F');
-        pdf.setTextColor(...COLORS.white);
-        pdf.setFontSize(6);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('DESTAQUE', imgX + 2, imgY + 5);
-      }
-
-      // === INFO DO PRODUTO ===
-      const infoX = imgX + imgSize + 6;
-      const infoWidth = cardWidth - imgSize - 14;
-
-      // Nome do produto
-      pdf.setTextColor(...COLORS.white);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(11);
-
-      // Quebrar nome se necessário
-      const nameLines = pdf.splitTextToSize(product.name, infoWidth);
-      pdf.text(nameLines.slice(0, 2), infoX, cardY + 12);
-
-      // Preço
-      pdf.setTextColor(...COLORS.accent);
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`R$ ${product.price.toFixed(2)}`, infoX, cardY + 28);
-
-      // Disponibilidade
-      const statusY = cardY + 36;
-      const statusColor = product.is_available ? COLORS.green : COLORS.red;
-      pdf.setFillColor(...statusColor);
-      pdf.circle(infoX + 3, statusY, 2, 'F');
-      pdf.setTextColor(...statusColor);
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(product.is_available ? 'Disponivel' : 'Esgotado', infoX + 8, statusY + 3);
-
-      // === SABORES ===
-      if (product.flavors.length > 0) {
-        const flavorY = cardY + cardHeight - 10;
-        let fx = cardX + 4;
-        const maxFlavorWidth = cardWidth - 8;
-        let flavorsShown = 0;
-
-        for (let j = 0; j < product.flavors.length; j++) {
-          const flavor = product.flavors[j];
-          const flavorColor = getFlavorColor(flavor);
-          const darkFlavorColor = getDarkColor(flavorColor);
-
-          pdf.setFontSize(7);
-          const textW = pdf.getTextWidth(flavor) + 5;
-
-          // Se não couber mais, mostrar contador
-          if (fx + textW > cardX + maxFlavorWidth) {
-            const remaining = product.flavors.length - flavorsShown;
-            if (remaining > 0) {
-              pdf.setTextColor(...COLORS.zinc400);
-              pdf.setFontSize(8);
-              pdf.text(`+${remaining}`, fx + 1, flavorY + 5);
-            }
-            break;
+        const imageData = imageCache[product.id];
+        if (imageData) {
+          try {
+            pdf.addImage(
+              imageData,
+              getImageFormatFromDataUrl(imageData),
+              imgX + 2,
+              imgY + 2,
+              imgSize - 4,
+              imgSize - 4
+            );
+          } catch {
+            pdf.setTextColor(...COLORS.zinc600);
+            pdf.setFontSize(20);
+            pdf.text('?', imgX + imgSize/2 - 3, imgY + imgSize/2 + 5);
           }
-
-          // Badge do sabor com cor escura
-          pdf.setFillColor(...darkFlavorColor);
-          pdf.roundedRect(fx, flavorY, textW, 7, 2, 2, 'F');
-
-          pdf.setTextColor(...flavorColor);
-          pdf.text(flavor, fx + 2.5, flavorY + 5);
-
-          fx += textW + 3;
-          flavorsShown++;
         }
+
+        if (product.is_featured) {
+          pdf.setFillColor(...COLORS.accent);
+          const badgeW = 22;
+          const badgeH = 7;
+          pdf.roundedRect(imgX, imgY, badgeW, badgeH, 2, 2, 'F');
+          pdf.setTextColor(...COLORS.white);
+          pdf.setFontSize(6);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('DESTAQUE', imgX + badgeW / 2, imgY + badgeH / 2, { align: 'center', baseline: 'middle' });
+        }
+
+        // === INFO DO PRODUTO ===
+        const infoX = imgX + imgSize + 6;
+        const infoWidth = cardWidth - imgSize - 14;
+
+        pdf.setTextColor(...COLORS.white);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        const nameLines = pdf.splitTextToSize(product.name, infoWidth);
+        pdf.text(nameLines.slice(0, 2), infoX, cardY + 12);
+
+        pdf.setTextColor(...COLORS.accent);
+        pdf.setFontSize(16);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`R$ ${formatBRL(product.price)}`, infoX, cardY + 28);
+
+        const statusCenterY = cardY + 36;
+        const statusColor = product.is_available ? COLORS.green : COLORS.red;
+        pdf.setFillColor(...statusColor);
+        pdf.circle(infoX + 3, statusCenterY, 2, 'F');
+        pdf.setTextColor(...statusColor);
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(product.is_available ? 'Disponível' : 'Esgotado', infoX + 8, statusCenterY, { baseline: 'middle' });
+
+        // === SABORES (todos) ===
+        if (product.flavors.length > 0) {
+          const rows = precomputedFlavorRows.length > 0
+            ? precomputedFlavorRows
+            : splitFlavorsIntoRows(pdf, product.flavors, maxFlavorWidth);
+
+          const rowsCount = rows.length;
+          const flavorAreaHeight = rowsCount * FLAVOR_BADGE_HEIGHT + (rowsCount - 1) * FLAVOR_BADGE_GAP_Y;
+          const startY = cardY + cardHeight - 4 - flavorAreaHeight;
+
+          for (let r = 0; r < rows.length; r++) {
+            let fx = cardX + 4;
+            const fy = startY + r * (FLAVOR_BADGE_HEIGHT + FLAVOR_BADGE_GAP_Y);
+
+            for (const item of rows[r]) {
+              const flavorColor = getFlavorColorRGB(item.flavor);
+              const darkFlavorColor = getDarkColor(flavorColor);
+
+              pdf.setFillColor(...darkFlavorColor);
+              pdf.roundedRect(fx, fy, item.w, FLAVOR_BADGE_HEIGHT, 2, 2, 'F');
+
+              pdf.setTextColor(...flavorColor);
+              pdf.setFontSize(FLAVOR_TEXT_SIZE);
+              pdf.text(item.flavor, fx + 2.5, fy + 5);
+
+              fx += item.w + FLAVOR_BADGE_GAP_X;
+            }
+          }
+        }
+      };
+
+      const leftX = right ? margin : margin + (contentWidth - cardWidth) / 2;
+      renderCard(left, leftX, dynamicCardHeight, leftFlavorRows);
+
+      if (right) {
+        const rightX = margin + (cardWidth + cardGap);
+        renderCard(right, rightX, dynamicCardHeight, rightFlavorRows);
       }
 
-      col++;
-      if (col >= 2) {
-        col = 0;
-        currentY += cardHeight + cardGap;
-      }
+      currentY += dynamicCardHeight + cardGap;
 
-      processed++;
+      processed += right ? 2 : 1;
       onProgress?.(40 + Math.round((processed / total) * 55));
-    }
-
-    // Se terminou em coluna ímpar, avançar linha
-    if (col === 1) {
-      col = 0;
-      currentY += cardHeight + cardGap;
     }
 
     // Espaço entre categorias
@@ -287,39 +333,90 @@ export async function generateCatalogPDF(onProgress?: (progress: number) => void
   }
 
   // === RODAPÉ NA ÚLTIMA PÁGINA ===
-  const footerY = pageHeight - 14;
+  // Rodapé em 2 linhas: pills (18+/WhatsApp) + data
+  const footerBoxY = pageHeight - 22;
+  const footerBoxH = 18;
 
   // Linha separadora
-  pdf.setDrawColor(...COLORS.accent);
+  pdf.setDrawColor(...COLORS.accentDark);
+  pdf.setLineWidth(0.6);
+  pdf.line(margin, footerBoxY - 3, pageWidth - margin, footerBoxY - 3);
+
+  // Container do rodapé
+  // sombra sutil (fake) + card
+  pdf.setFillColor(0, 0, 0);
+  pdf.roundedRect(margin, footerBoxY + 0.6, contentWidth, footerBoxH, 4, 4, 'F');
+  pdf.setFillColor(...COLORS.cardBg);
+  pdf.roundedRect(margin, footerBoxY, contentWidth, footerBoxH, 4, 4, 'F');
+  pdf.setDrawColor(...COLORS.accentDark);
   pdf.setLineWidth(0.5);
-  pdf.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
+  pdf.roundedRect(margin, footerBoxY, contentWidth, footerBoxH, 4, 4, 'S');
 
-  // Aviso +18 (esquerda)
-  pdf.setFillColor(...COLORS.redDark);
-  pdf.roundedRect(margin, footerY, 75, 10, 3, 3, 'F');
+  const pillY = footerBoxY + 2;
+  const pillH = 10;
 
-  pdf.setTextColor(...COLORS.red);
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('PROIBIDO MENORES DE 18', margin + 3, footerY + 7);
+  // Aviso +18 (esquerda) - mais premium
+  const ageX = margin + 4;
+  const ageW = 88;
+  pdf.setFillColor(...getDarkColor(COLORS.red));
+  pdf.roundedRect(ageX, pillY, ageW, pillH, 5, 5, 'F');
+  pdf.setDrawColor(...COLORS.red);
+  pdf.setLineWidth(0.6);
+  pdf.roundedRect(ageX, pillY, ageW, pillH, 5, 5, 'S');
 
-  // WhatsApp (direita)
-  pdf.setFillColor(22, 80, 50);
-  pdf.roundedRect(pageWidth - margin - 60, footerY, 60, 10, 3, 3, 'F');
+  const ageIconCx = ageX + 7;
+  const ageIconCy = pillY + pillH / 2;
+  pdf.setFillColor(...COLORS.red);
+  pdf.circle(ageIconCx, ageIconCy, 3.2, 'F');
   pdf.setTextColor(...COLORS.white);
-  pdf.setFontSize(9);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('(61) 98213-1123', pageWidth - margin - 57, footerY + 7);
+  pdf.setFontSize(6);
+  pdf.text('18+', ageIconCx, ageIconCy, { align: 'center', baseline: 'middle' });
 
-  // Data (centro)
-  pdf.setTextColor(...COLORS.zinc400);
-  pdf.setFontSize(8);
+  pdf.setTextColor(...COLORS.white);
   pdf.setFont('helvetica', 'normal');
-  const date = new Date().toLocaleDateString('pt-BR');
-  pdf.text(`Atualizado: ${date}`, pageWidth / 2, footerY + 7, { align: 'center' });
+  pdf.setFontSize(6);
+  pdf.text('PROIBIDO PARA', ageX + 13, pillY + 4.1);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8);
+  pdf.text('MENORES DE 18', ageX + 13, pillY + 8.2);
+
+  // WhatsApp (direita) - destaque com ícone
+  const waW = 72;
+  const waX = pageWidth - margin - 4 - waW;
+  pdf.setFillColor(...getDarkColor(COLORS.green));
+  pdf.roundedRect(waX, pillY, waW, pillH, 5, 5, 'F');
+  pdf.setDrawColor(...COLORS.green);
+  pdf.setLineWidth(0.6);
+  pdf.roundedRect(waX, pillY, waW, pillH, 5, 5, 'S');
+
+  const waIconCx = waX + 7;
+  const waIconCy = pillY + pillH / 2;
+  pdf.setFillColor(...COLORS.green);
+  pdf.circle(waIconCx, waIconCy, 3.2, 'F');
+  pdf.setTextColor(...COLORS.white);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(6);
+  pdf.text('WA', waIconCx, waIconCy, { align: 'center', baseline: 'middle' });
+
+  pdf.setTextColor(...COLORS.white);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(6);
+  pdf.text('WHATSAPP', waX + 13, pillY + 4.1);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.text('61 98213-1123', waX + 13, pillY + 8.3);
+
+  // Data (linha de baixo, centro)
+  pdf.setTextColor(...COLORS.zinc400);
+  pdf.setFontSize(7);
+  pdf.setFont('helvetica', 'normal');
+  const now = new Date();
+  const date = now.toLocaleDateString('pt-BR');
+  pdf.text(`Atualizado: ${date}`, pageWidth / 2, footerBoxY + footerBoxH - 3.5, { align: 'center', baseline: 'middle' });
 
   onProgress?.(100);
 
   // Salvar PDF
-  pdf.save(`catalogo-${new Date().toISOString().split('T')[0]}.pdf`);
+  pdf.save(`catalogo-${getLocalISODate(now)}.pdf`);
 }

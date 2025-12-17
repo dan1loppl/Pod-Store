@@ -4,6 +4,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ProductImage } from './ProductImage';
 import type { Product } from '@/data/products';
 import { formatCategoryName } from '@/data/products';
+import { getFlavorBadgeClasses } from '@/lib/flavorColors';
 
 interface ProductModalProps {
   product: Product;
@@ -11,63 +12,8 @@ interface ProductModalProps {
   onClose: () => void;
 }
 
-// Mapeamento de cores por tipo de sabor
-const getFlavorColor = (flavor: string): { bg: string; border: string; text: string } => {
-  const f = flavor.toLowerCase();
 
-  if (f.includes('strawberry') || f.includes('morango')) {
-    return { bg: 'bg-red-500/20', border: 'border-red-500/40', text: 'text-red-300' };
-  }
-  if (f.includes('banana')) {
-    return { bg: 'bg-yellow-500/20', border: 'border-yellow-500/40', text: 'text-yellow-300' };
-  }
-  if (f.includes('watermelon') || f.includes('melancia')) {
-    return { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-300' };
-  }
-  if (f.includes('grape') || f.includes('uva')) {
-    return { bg: 'bg-purple-500/20', border: 'border-purple-500/40', text: 'text-purple-300' };
-  }
-  if (f.includes('mint') || f.includes('menthol') || f.includes('menta') || f === 'ice') {
-    return { bg: 'bg-cyan-500/20', border: 'border-cyan-500/40', text: 'text-cyan-300' };
-  }
-  if (f.includes('apple') || f.includes('maçã')) {
-    return { bg: 'bg-green-400/20', border: 'border-green-400/40', text: 'text-green-300' };
-  }
-  if (f.includes('mango') || f.includes('manga')) {
-    return { bg: 'bg-orange-500/20', border: 'border-orange-500/40', text: 'text-orange-300' };
-  }
-  if (f.includes('peach') || f.includes('pêssego')) {
-    return { bg: 'bg-orange-400/20', border: 'border-orange-400/40', text: 'text-orange-300' };
-  }
-  if (f.includes('blueberry') || f.includes('blue') || f.includes('mirtilo')) {
-    return { bg: 'bg-blue-500/20', border: 'border-blue-500/40', text: 'text-blue-300' };
-  }
-  if (f.includes('lime') || f.includes('lemon') || f.includes('limão')) {
-    return { bg: 'bg-lime-500/20', border: 'border-lime-500/40', text: 'text-lime-300' };
-  }
-  if (f.includes('kiwi')) {
-    return { bg: 'bg-emerald-500/20', border: 'border-emerald-500/40', text: 'text-emerald-300' };
-  }
-  if (f.includes('coconut') || f.includes('coco')) {
-    return { bg: 'bg-amber-200/20', border: 'border-amber-200/40', text: 'text-amber-200' };
-  }
-  if (f.includes('raspberry') || f.includes('framboesa')) {
-    return { bg: 'bg-pink-500/20', border: 'border-pink-500/40', text: 'text-pink-300' };
-  }
-  if (f.includes('tutti') || f.includes('splash') || f.includes('twist')) {
-    return { bg: 'bg-fuchsia-500/20', border: 'border-fuchsia-500/40', text: 'text-fuchsia-300' };
-  }
-  if (f.includes('clear') || f.includes('neutro')) {
-    return { bg: 'bg-slate-500/20', border: 'border-slate-500/40', text: 'text-slate-300' };
-  }
-  if (f.includes('grapefruit')) {
-    return { bg: 'bg-rose-500/20', border: 'border-rose-500/40', text: 'text-rose-300' };
-  }
-  if (f.includes('ice')) {
-    return { bg: 'bg-sky-500/20', border: 'border-sky-500/40', text: 'text-sky-300' };
-  }
-  return { bg: 'bg-accent/15', border: 'border-accent/30', text: 'text-white' };
-};
+const FLAVOR_BASE_CLASS = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs border';
 
 export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
   const handleWhatsApp = () => {
@@ -165,12 +111,11 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {product.flavors.map((flavor) => {
-                    const colors = getFlavorColor(flavor);
+                    const colors = getFlavorBadgeClasses(flavor, 'strong');
                     return (
                       <span
                         key={flavor}
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs
-                                   ${colors.bg} border ${colors.border} ${colors.text}`}
+                        className={`${FLAVOR_BASE_CLASS} ${colors.bg} ${colors.border} ${colors.text}`}
                       >
                         {flavor}
                       </span>

@@ -22,6 +22,13 @@ export default function Home() {
     ? products.filter((p) => p.category_id === selectedCategory)
     : products;
 
+  const productGridClassName =
+    filteredProducts.length <= 1
+      ? 'grid grid-cols-1 gap-3 sm:gap-4 md:gap-6 max-w-sm mx-auto'
+      : filteredProducts.length <= 2
+        ? 'grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 max-w-3xl mx-auto'
+        : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6';
+
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
     setIsModalOpen(true);
@@ -47,7 +54,7 @@ export default function Home() {
 
       {/* Products Grid */}
       <section className="px-3 sm:px-4 py-6 sm:py-8 max-w-7xl mx-auto" aria-label="Catálogo de produtos">
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+        <div className={productGridClassName}>
           {filteredProducts.map((product, index) => (
             <ProductCard
               key={product.id}

@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { ProductImage } from './ProductImage';
 import type { Product } from '@/data/products';
+import { getFlavorBadgeClasses } from '@/lib/flavorColors';
 
 interface ProductCardProps {
   product: Product;
@@ -26,63 +27,7 @@ const cardVariants = {
   }),
 };
 
-// Mapeamento de cores por tipo de sabor
-const getFlavorColor = (flavor: string): { bg: string; border: string; text: string } => {
-  const f = flavor.toLowerCase();
-
-  if (f.includes('strawberry') || f.includes('morango')) {
-    return { bg: 'bg-red-500/15', border: 'border-red-500/30', text: 'text-red-300' };
-  }
-  if (f.includes('banana')) {
-    return { bg: 'bg-yellow-500/15', border: 'border-yellow-500/30', text: 'text-yellow-300' };
-  }
-  if (f.includes('watermelon') || f.includes('melancia')) {
-    return { bg: 'bg-green-500/15', border: 'border-green-500/30', text: 'text-green-300' };
-  }
-  if (f.includes('grape') || f.includes('uva')) {
-    return { bg: 'bg-purple-500/15', border: 'border-purple-500/30', text: 'text-purple-300' };
-  }
-  if (f.includes('mint') || f.includes('menthol') || f.includes('menta') || f === 'ice') {
-    return { bg: 'bg-cyan-500/15', border: 'border-cyan-500/30', text: 'text-cyan-300' };
-  }
-  if (f.includes('apple') || f.includes('maçã')) {
-    return { bg: 'bg-green-400/15', border: 'border-green-400/30', text: 'text-green-300' };
-  }
-  if (f.includes('mango') || f.includes('manga')) {
-    return { bg: 'bg-orange-500/15', border: 'border-orange-500/30', text: 'text-orange-300' };
-  }
-  if (f.includes('peach') || f.includes('pêssego')) {
-    return { bg: 'bg-orange-400/15', border: 'border-orange-400/30', text: 'text-orange-300' };
-  }
-  if (f.includes('blueberry') || f.includes('blue') || f.includes('mirtilo')) {
-    return { bg: 'bg-blue-500/15', border: 'border-blue-500/30', text: 'text-blue-300' };
-  }
-  if (f.includes('lime') || f.includes('lemon') || f.includes('limão')) {
-    return { bg: 'bg-lime-500/15', border: 'border-lime-500/30', text: 'text-lime-300' };
-  }
-  if (f.includes('kiwi')) {
-    return { bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-300' };
-  }
-  if (f.includes('coconut') || f.includes('coco')) {
-    return { bg: 'bg-amber-100/15', border: 'border-amber-100/30', text: 'text-amber-200' };
-  }
-  if (f.includes('raspberry') || f.includes('framboesa')) {
-    return { bg: 'bg-pink-500/15', border: 'border-pink-500/30', text: 'text-pink-300' };
-  }
-  if (f.includes('tutti') || f.includes('splash') || f.includes('twist')) {
-    return { bg: 'bg-fuchsia-500/15', border: 'border-fuchsia-500/30', text: 'text-fuchsia-300' };
-  }
-  if (f.includes('clear') || f.includes('neutro')) {
-    return { bg: 'bg-slate-500/15', border: 'border-slate-500/30', text: 'text-slate-300' };
-  }
-  if (f.includes('grapefruit')) {
-    return { bg: 'bg-rose-500/15', border: 'border-rose-500/30', text: 'text-rose-300' };
-  }
-  if (f.includes('ice')) {
-    return { bg: 'bg-sky-500/15', border: 'border-sky-500/30', text: 'text-sky-300' };
-  }
-  return { bg: 'bg-white/5', border: 'border-white/10', text: 'text-zinc-400' };
-};
+const FLAVOR_BASE_CLASS = 'text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full border';
 
 export function ProductCard({ product, index, onClick }: ProductCardProps) {
   const isUnavailable = !product.is_available;
@@ -106,6 +51,7 @@ export function ProductCard({ product, index, onClick }: ProductCardProps) {
       transition={{ duration: 0.3 }}
       onClick={!isUnavailable ? onClick : undefined}
       className={`
+        group
         relative bg-card rounded-2xl overflow-hidden
         border border-white/5 cursor-pointer
         transition-colors duration-300
@@ -147,8 +93,8 @@ export function ProductCard({ product, index, onClick }: ProductCardProps) {
           loading="lazy"
           fallbackText={product.name}
           className={`
-            object-cover transition-transform duration-500
-            ${!isUnavailable ? 'group-hover:scale-110' : 'grayscale'}
+            object-contain transition-transform duration-500
+            ${!isUnavailable ? 'group-hover:scale-105' : 'grayscale'}
           `}
         />
 
@@ -165,23 +111,28 @@ export function ProductCard({ product, index, onClick }: ProductCardProps) {
 
         {/* Flavors Preview */}
         {product.flavors.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {product.flavors.slice(0, 2).map((flavor) => {
-              const colors = getFlavorColor(flavor);
+          <div className="flex flex-wrap gap-1.5">
+            {product.flavors.map((flavor) => {
+              const colors = getFlavorBadgeClasses(flavor, 'subtle');
               return (
                 <span
                   key={flavor}
-                  className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full border ${colors.bg} ${colors.border} ${colors.text}`}
+                  className={`${FLAVOR_BASE_CLASS} ${colors.bg} ${colors.border} ${colors.text}`}
                 >
                   {flavor}
                 </span>
               );
             })}
-            {product.flavors.length > 2 && (
-              <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/10">
-                +{product.flavors.length - 2}
-              </span>
-            )}
+          </div>
+        )}
+
+        {/* Availability (não depende só de cor) */}
+        {!isUnavailable && (
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" aria-hidden="true" />
+              <span>Disponível</span>
+            </span>
           </div>
         )}
 
